@@ -1,4 +1,4 @@
-# Selenium Test Container for Analens
+# Selenium Test Container for Alens
 # Uses Chromium for cross-platform support (ARM64 + AMD64)
 FROM python:3.11-slim
 

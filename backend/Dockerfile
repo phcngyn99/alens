@@ -1,4 +1,4 @@
-# Analens Backend Dockerfile
+# Alens Backend Dockerfile
 FROM python:3.11-slim
 
 # Set environment variables

@@ -1,47 +1,45 @@
 """
-In-memory caching layer with TTL support.
+Redis caching layer with TTL support.
 Reduces database queries for frequently accessed data like schema introspection.
 """
 
-import asyncio
-import hashlib
 import json
 import logging
-from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 from uuid import UUID
 
+import redis.asyncio as redis
+
 logger = logging.getLogger(__name__)
 
-
-def _utc_now() -> datetime:
-    """Get current UTC time in timezone-aware format."""
-    return datetime.now(timezone.utc)
+# Global Redis client
+_redis_client: Optional[redis.Redis] = None
 
 
-@dataclass
-class CacheEntry:
-    """A single cache entry with value and expiration."""
+async def get_redis() -> redis.Redis:
+    """Get the global Redis client instance."""
+    global _redis_client
+    if _redis_client is None:
+        from app.config import get_settings
 
-    value: Any
-    expires_at: datetime
-    created_at: datetime = field(default_factory=_utc_now)
+        settings = get_settings()
+        _redis_client = redis.from_url(
+            settings.redis_url,
+            encoding="utf-8",
+            decode_responses=True,
+        )
+    return _redis_client
 
-    @property
-    def is_expired(self) -> bool:
-        return _utc_now() > self.expires_at
 
-
-class InMemoryCache:
+class RedisCache:
     """
-    Thread-safe in-memory cache with TTL support.
+    Redis-based cache with TTL support.
 
     Features:
-    - TTL-based expiration
-    - Automatic cleanup of expired entries
-    - Key prefixing for namespacing
-    - Cache statistics
+    - TTL-based expiration (handled by Redis)
+    - Pattern-based key deletion
+    - Persistent across restarts
+    - Shared across multiple backend instances
     """
 
     def __init__(self, default_ttl_seconds: int = 300):
@@ -51,99 +49,90 @@ class InMemoryCache:
         Args:
             default_ttl_seconds: Default time-to-live in seconds (default: 5 minutes)
         """
-        self._cache: dict[str, CacheEntry] = {}
-        self._lock = asyncio.Lock()
         self._default_ttl = default_ttl_seconds
-        self._hits = 0
-        self._misses = 0
-
-    def _make_key(self, prefix: str, *args, **kwargs) -> str:
-        """Generate a cache key from prefix and arguments."""
-        key_data = json.dumps(
-            {"args": [str(a) for a in args], "kwargs": kwargs}, sort_keys=True
-        )
-        key_hash = hashlib.md5(key_data.encode()).hexdigest()[:16]
-        return f"{prefix}:{key_hash}"
 
     async def get(self, key: str) -> Optional[Any]:
         """Get a value from cache. Returns None if not found or expired."""
-        async with self._lock:
-            entry = self._cache.get(key)
-            if entry is None:
-                self._misses += 1
+        try:
+            client = await get_redis()
+            value = await client.get(key)
+            if value is None:
                 return None
-            if entry.is_expired:
-                del self._cache[key]
-                self._misses += 1
-                return None
-            self._hits += 1
-            return entry.value
+            return json.loads(value)
+        except Exception as e:
+            logger.warning(f"Redis get error for key {key}: {e}")
+            return None
 
     async def set(
         self, key: str, value: Any, ttl_seconds: Optional[int] = None
     ) -> None:
         """Set a value in cache with optional custom TTL."""
-        ttl = ttl_seconds if ttl_seconds is not None else self._default_ttl
-        expires_at = _utc_now() + timedelta(seconds=ttl)
-        async with self._lock:
-            self._cache[key] = CacheEntry(value=value, expires_at=expires_at)
+        try:
+            client = await get_redis()
+            ttl = ttl_seconds if ttl_seconds is not None else self._default_ttl
+            serialized = json.dumps(value, default=str)
+            await client.setex(key, ttl, serialized)
+        except Exception as e:
+            logger.warning(f"Redis set error for key {key}: {e}")
 
     async def delete(self, key: str) -> bool:
         """Delete a specific key from cache."""
-        async with self._lock:
-            if key in self._cache:
-                del self._cache[key]
-                return True
+        try:
+            client = await get_redis()
+            result = await client.delete(key)
+            return result > 0
+        except Exception as e:
+            logger.warning(f"Redis delete error for key {key}: {e}")
             return False
 
     async def delete_pattern(self, pattern: str) -> int:
         """Delete all keys matching a pattern (prefix match)."""
-        async with self._lock:
-            keys_to_delete = [k for k in self._cache.keys() if k.startswith(pattern)]
-            for key in keys_to_delete:
-                del self._cache[key]
-            return len(keys_to_delete)
+        try:
+            client = await get_redis()
+            # Use SCAN to find matching keys (safer than KEYS for large datasets)
+            cursor = 0
+            deleted_count = 0
+            while True:
+                cursor, keys = await client.scan(cursor, match=f"{pattern}*", count=100)
+                if keys:
+                    deleted_count += await client.delete(*keys)
+                if cursor == 0:
+                    break
+            return deleted_count
+        except Exception as e:
+            logger.warning(f"Redis delete_pattern error for pattern {pattern}: {e}")
+            return 0
 
     async def clear(self) -> None:
-        """Clear all cache entries."""
-        async with self._lock:
-            self._cache.clear()
-            self._hits = 0
-            self._misses = 0
+        """Clear all cache entries with 'conn:' prefix (our namespace)."""
+        try:
+            await self.delete_pattern("conn:")
+        except Exception as e:
+            logger.warning(f"Redis clear error: {e}")
 
-    async def cleanup_expired(self) -> int:
-        """Remove all expired entries. Returns count of removed entries."""
-        async with self._lock:
-            expired_keys = [k for k, v in self._cache.items() if v.is_expired]
-            for key in expired_keys:
-                del self._cache[key]
-            return len(expired_keys)
-
-    @property
-    def stats(self) -> dict:
-        """Get cache statistics."""
-        total = self._hits + self._misses
-        hit_rate = (self._hits / total * 100) if total > 0 else 0
-        return {
-            "size": len(self._cache),
-            "hits": self._hits,
-            "misses": self._misses,
-            "hit_rate": f"{hit_rate:.1f}%",
-        }
+    async def ping(self) -> bool:
+        """Check if Redis is available."""
+        try:
+            client = await get_redis()
+            await client.ping()
+            return True
+        except Exception as e:
+            logger.warning(f"Redis ping failed: {e}")
+            return False
 
 
 # Global cache instance
-_cache: Optional[InMemoryCache] = None
+_cache: Optional[RedisCache] = None
 
 
-def get_cache() -> InMemoryCache:
+def get_cache() -> RedisCache:
     """Get the global cache instance."""
     global _cache
     if _cache is None:
         from app.config import get_settings
 
         settings = get_settings()
-        _cache = InMemoryCache(default_ttl_seconds=settings.cache_ttl_seconds)
+        _cache = RedisCache(default_ttl_seconds=settings.cache_ttl_seconds)
     return _cache
 
 

@@ -53,7 +53,8 @@ class Settings(BaseSettings):
     # CORS
     cors_origins: list[str] = ["http://localhost:3000", "http://localhost:5173"]
 
-    # Cache settings
+    # Redis cache settings
+    redis_url: str = "redis://localhost:6379/0"
     cache_ttl_seconds: int = 300  # 5 minutes default TTL for schema introspection
     cache_preview_ttl_seconds: int = (
         60  # 1 minute for table previews (data changes more often)

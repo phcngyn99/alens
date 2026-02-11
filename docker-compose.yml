@@ -1,5 +1,5 @@
 # Alens Docker Compose Configuration
-# Microservices deployment with PostgreSQL
+# Microservices deployment with PostgreSQL and Redis
 
 services:
   # PostgreSQL database for application storage
@@ -21,6 +21,21 @@ services:
       retries: 5
     restart: unless-stopped
 
+  # Redis for caching
+  redis:
+    image: redis:7-alpine
+    container_name: alens-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
   # Backend API service
   backend:
     build:
@@ -29,6 +44,7 @@ services:
     container_name: alens-backend
     environment:
       - DATABASE_URL=postgresql+asyncpg://alens:alens@db:5432/alens
+      - REDIS_URL=redis://redis:6379/0
       - SECRET_KEY=${SECRET_KEY:-change-this-in-production}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:-change-this-32-byte-key}
       - DEBUG=false
@@ -38,6 +54,8 @@ services:
       - "8080:8000"
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     restart: unless-stopped
 
@@ -112,6 +130,7 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:
   sqlserver_data:
 
 networks:

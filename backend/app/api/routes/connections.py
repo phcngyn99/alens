@@ -1,6 +1,9 @@
 """
 Database connection management routes.
+Includes cache invalidation when connections are modified.
 """
+
+import logging
 from typing import Annotated
 from uuid import UUID
 
@@ -17,11 +20,17 @@ from app.api.schemas import (
 )
 from app.auth.dependencies import CurrentUser
 from app.auth.encryption import decrypt_value, encrypt_value
+from app.core.cache import CacheKeys, get_cache
 from app.core.introspect.base import ConnectionConfig
-from app.core.introspect.factory import check_all_drivers, check_driver, get_introspector
+from app.core.introspect.factory import (
+    check_all_drivers,
+    check_driver,
+    get_introspector,
+)
 from app.storage.database import get_db
 from app.storage.models import DatabaseConnection
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/connections", tags=["Database Connections"])
 
 
@@ -67,7 +76,7 @@ async def create_connection(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Driver not installed: {driver_status.install_instructions}",
         )
-    
+
     db_connection = DatabaseConnection(
         owner_id=current_user.id,
         name=connection.name,
@@ -79,11 +88,11 @@ async def create_connection(
         encrypted_password=encrypt_value(connection.password),
         schema_whitelist=connection.schema_whitelist,
     )
-    
+
     db.add(db_connection)
     await db.commit()
     await db.refresh(db_connection)
-    
+
     return ConnectionResponse.model_validate(db_connection)
 
 
@@ -101,10 +110,12 @@ async def get_connection(
         )
     )
     connection = result.scalar_one_or_none()
-    
+
     if not connection:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Connection not found")
-    
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Connection not found"
+        )
+
     return ConnectionResponse.model_validate(connection)
 
 
@@ -122,10 +133,12 @@ async def test_connection(
         )
     )
     connection = result.scalar_one_or_none()
-    
+
     if not connection:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Connection not found")
-    
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Connection not found"
+        )
+
     config = ConnectionConfig(
         host=connection.host,
         port=connection.port,
@@ -134,9 +147,9 @@ async def test_connection(
         password=decrypt_value(connection.encrypted_password),
         schema_whitelist=connection.schema_whitelist,
     )
-    
+
     introspector = get_introspector(connection.db_type, config)
-    
+
     try:
         async with introspector:
             success, message = await introspector.test_connection()
@@ -151,7 +164,7 @@ async def delete_connection(
     current_user: CurrentUser,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> None:
-    """Delete a database connection."""
+    """Delete a database connection and invalidate related cache entries."""
     result = await db.execute(
         select(DatabaseConnection).where(
             DatabaseConnection.id == connection_id,
@@ -159,10 +172,19 @@ async def delete_connection(
         )
     )
     connection = result.scalar_one_or_none()
-    
+
     if not connection:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Connection not found")
-    
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Connection not found"
+        )
+
+    # Invalidate all cache entries for this connection
+    cache = get_cache()
+    cache_prefix = CacheKeys.for_connection(connection_id)
+    deleted_count = await cache.delete_pattern(cache_prefix)
+    logger.info(
+        f"Invalidated {deleted_count} cache entries for connection {connection_id}"
+    )
+
     await db.delete(connection)
     await db.commit()
-

@@ -1,8 +1,10 @@
 """
 Database introspection routes.
 All operations are READ-ONLY.
+Includes caching to reduce database queries.
 """
 
+import logging
 from typing import Annotated
 from uuid import UUID
 
@@ -19,11 +21,15 @@ from app.api.schemas import (
 )
 from app.auth.dependencies import CurrentUser
 from app.auth.encryption import decrypt_value
+from app.config import get_settings
+from app.core.cache import CacheKeys, get_cache
 from app.core.introspect.base import ConnectionConfig
 from app.core.introspect.factory import get_introspector
 from app.storage.database import get_db
 from app.storage.models import DatabaseConnection
 
+logger = logging.getLogger(__name__)
+settings = get_settings()
 router = APIRouter(prefix="/introspect", tags=["Schema Introspection"])
 
 
@@ -65,14 +71,27 @@ async def list_schemas(
     current_user: CurrentUser,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> list[str]:
-    """List all schemas in the database (respects whitelist)."""
+    """List all schemas in the database (respects whitelist). Results are cached."""
+    cache = get_cache()
+    cache_key = CacheKeys.schemas(connection_id)
+
+    # Check cache first
+    cached = await cache.get(cache_key)
+    if cached is not None:
+        logger.debug(f"Cache hit for schemas: {connection_id}")
+        return cached
+
     _, introspector = await _get_connection_and_introspector(
         connection_id, current_user, db
     )
 
     try:
         async with introspector:
-            return await introspector.get_schemas()
+            schemas = await introspector.get_schemas()
+            # Cache the result
+            await cache.set(cache_key, schemas, settings.cache_ttl_seconds)
+            logger.debug(f"Cached schemas for connection: {connection_id}")
+            return schemas
     except ConnectionError as e:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e)
@@ -86,14 +105,27 @@ async def list_tables(
     current_user: CurrentUser,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> list[str]:
-    """List all tables in a schema."""
+    """List all tables in a schema. Results are cached."""
+    cache = get_cache()
+    cache_key = CacheKeys.tables(connection_id, schema_name)
+
+    # Check cache first
+    cached = await cache.get(cache_key)
+    if cached is not None:
+        logger.debug(f"Cache hit for tables: {connection_id}/{schema_name}")
+        return cached
+
     _, introspector = await _get_connection_and_introspector(
         connection_id, current_user, db
     )
 
     try:
         async with introspector:
-            return await introspector.get_tables(schema_name)
+            tables = await introspector.get_tables(schema_name)
+            # Cache the result
+            await cache.set(cache_key, tables, settings.cache_ttl_seconds)
+            logger.debug(f"Cached tables for: {connection_id}/{schema_name}")
+            return tables
     except ConnectionError as e:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e)
@@ -110,8 +142,17 @@ async def introspect_schema(
 ) -> SchemaResponse:
     """
     Fully introspect a schema - returns all tables with columns, keys, and indexes.
-    This is an explicit action that scans the schema.
+    This is an explicit action that scans the schema. Results are cached.
     """
+    cache = get_cache()
+    cache_key = CacheKeys.schema_detail(connection_id, schema_name, include_stats)
+
+    # Check cache first
+    cached = await cache.get(cache_key)
+    if cached is not None:
+        logger.debug(f"Cache hit for schema detail: {connection_id}/{schema_name}")
+        return cached
+
     _, introspector = await _get_connection_and_introspector(
         connection_id, current_user, db
     )
@@ -172,7 +213,11 @@ async def introspect_schema(
                     )
                 )
 
-            return SchemaResponse(name=schema.name, tables=table_responses)
+            response = SchemaResponse(name=schema.name, tables=table_responses)
+            # Cache the result
+            await cache.set(cache_key, response, settings.cache_ttl_seconds)
+            logger.debug(f"Cached schema detail for: {connection_id}/{schema_name}")
+            return response
     except ConnectionError as e:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e)
@@ -190,7 +235,16 @@ async def introspect_table(
     current_user: CurrentUser,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> TableResponse:
-    """Introspect a single table."""
+    """Introspect a single table. Results are cached."""
+    cache = get_cache()
+    cache_key = CacheKeys.table_detail(connection_id, schema_name, table_name)
+
+    # Check cache first
+    cached = await cache.get(cache_key)
+    if cached is not None:
+        logger.debug(f"Cache hit for table: {connection_id}/{schema_name}/{table_name}")
+        return cached
+
     _, introspector = await _get_connection_and_introspector(
         connection_id, current_user, db
     )
@@ -205,7 +259,7 @@ async def introspect_table(
             elif table.fk_count == 0:
                 hint = "reference-like"
 
-            return TableResponse(
+            response = TableResponse(
                 schema_name=table.schema_name,
                 name=table.name,
                 columns=[
@@ -235,6 +289,12 @@ async def introspect_table(
                 fk_count=table.fk_count,
                 hint=hint,
             )
+            # Cache the result
+            await cache.set(cache_key, response, settings.cache_ttl_seconds)
+            logger.debug(
+                f"Cached table detail for: {connection_id}/{schema_name}/{table_name}"
+            )
+            return response
     except ConnectionError as e:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e)
@@ -255,8 +315,19 @@ async def get_table_preview(
 ) -> TableDataPreviewResponse:
     """
     Get a preview of table data (sample rows).
-    Limited to 100 rows max for performance.
+    Limited to 100 rows max for performance. Results are cached with shorter TTL.
     """
+    cache = get_cache()
+    cache_key = CacheKeys.table_preview(connection_id, schema_name, table_name, limit)
+
+    # Check cache first
+    cached = await cache.get(cache_key)
+    if cached is not None:
+        logger.debug(
+            f"Cache hit for preview: {connection_id}/{schema_name}/{table_name}"
+        )
+        return cached
+
     _, introspector = await _get_connection_and_introspector(
         connection_id, current_user, db
     )
@@ -266,13 +337,19 @@ async def get_table_preview(
             columns, rows = await introspector.get_sample_data(
                 schema_name, table_name, limit
             )
-            return TableDataPreviewResponse(
+            response = TableDataPreviewResponse(
                 schema_name=schema_name,
                 table_name=table_name,
                 columns=columns,
                 rows=rows,
                 row_count=len(rows),
             )
+            # Cache with shorter TTL since data changes more often
+            await cache.set(cache_key, response, settings.cache_preview_ttl_seconds)
+            logger.debug(
+                f"Cached preview for: {connection_id}/{schema_name}/{table_name}"
+            )
+            return response
     except ConnectionError as e:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e)

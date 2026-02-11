@@ -1,0 +1,31 @@
+# FastAPI and server
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+python-multipart>=0.0.9
+
+# Database
+sqlalchemy>=2.0.25
+asyncpg>=0.29.0
+alembic>=1.13.0
+
+# Database drivers (pyodbc for SQL Server)
+pyodbc>=5.1.0
+
+# Security
+python-jose[cryptography]>=3.3.0
+bcrypt>=4.0.0
+cryptography>=42.0.0
+
+# AI
+openai>=1.12.0
+anthropic>=0.18.0
+
+# Utilities
+pydantic>=2.6.0
+pydantic-settings>=2.1.0
+python-dotenv>=1.0.0
+httpx>=0.26.0
+
+# Note: ibm-db for DB2 support is optional and must be installed separately
+# pip install ibm-db ibm-db-sa (requires IBM clidriver)
+

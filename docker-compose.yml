@@ -1,0 +1,120 @@
+# Alens Docker Compose Configuration
+# Microservices deployment with PostgreSQL
+
+services:
+  # PostgreSQL database for application storage
+  db:
+    image: postgres:15-alpine
+    container_name: alens-db
+    environment:
+      POSTGRES_USER: alens
+      POSTGRES_PASSWORD: alens
+      POSTGRES_DB: alens
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U alens"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Backend API service
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: alens-backend
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://alens:alens@db:5432/alens
+      - SECRET_KEY=${SECRET_KEY:-change-this-in-production}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-change-this-32-byte-key}
+      - DEBUG=false
+      - CORS_ORIGINS=["http://localhost:3000","http://localhost:5173","http://localhost"]
+      - SQLSERVER_HOST=${SQLSERVER_HOST:-sqlserver-test}
+    ports:
+      - "8080:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Frontend service
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: alens-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  # SQL Server with AdventureWorks for Testing
+  sqlserver-test:
+    build:
+      context: ./tests/sqlserver
+      dockerfile: Dockerfile
+    container_name: alens-sqlserver-test
+    environment:
+      - ACCEPT_EULA=Y
+      - MSSQL_SA_PASSWORD=YourPassword123!
+      - SA_PASSWORD=YourPassword123!
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver_data:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'YourPassword123!' -C -Q 'SELECT 1' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 90s
+    profiles:
+      - test
+    restart: "no"
+
+  # Selenium E2E Test Runner
+  tests:
+    build:
+      context: ./tests
+      dockerfile: Dockerfile
+    container_name: alens-tests
+    environment:
+      - BASE_URL=http://frontend
+      - API_URL=http://backend:8000
+      - DEFAULT_USERNAME=wnkadmin
+      - DEFAULT_PASSWORD=wnkadmin
+      - HEADLESS=true
+      - IMPLICIT_WAIT=10
+      - EXPLICIT_WAIT=20
+      - SQLSERVER_HOST=sqlserver-test
+      - SQLSERVER_PORT=1433
+      - SQLSERVER_USER=sa
+      - SQLSERVER_PASSWORD=YourPassword123!
+      - SQLSERVER_DATABASE=AdventureWorks2022
+    volumes:
+      - ./tests/reports:/tests/reports
+    depends_on:
+      frontend:
+        condition: service_started
+      backend:
+        condition: service_started
+      sqlserver-test:
+        condition: service_healthy
+    profiles:
+      - test
+    # Do not auto-restart - test container exits after running
+    restart: "no"
+
+volumes:
+  postgres_data:
+  sqlserver_data:
+
+networks:
+  default:
+    name: alens-network
+

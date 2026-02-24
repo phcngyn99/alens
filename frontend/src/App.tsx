@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './hooks/useAuth';
+import { ERDSettingsProvider } from './lib/erd';
 import Layout from './components/Layout';
 import LoginPage from './pages/LoginPage';
 import ConnectionsPage from './pages/ConnectionsPage';
@@ -20,26 +21,28 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
 function App() {
   return (
-    <Routes>
-      <Route path="/login" element={<LoginPage />} />
-      <Route
-        path="/*"
-        element={
-          <ProtectedRoute>
-            <Layout>
-              <Routes>
-                <Route path="/" element={<Navigate to="/connections" replace />} />
-                <Route path="/connections" element={<ConnectionsPage />} />
-                <Route path="/schema/:connectionId" element={<SchemaPage />} />
-                <Route path="/intent/:connectionId" element={<IntentPage />} />
-                <Route path="/generate/:intentId" element={<GeneratePage />} />
-                <Route path="/settings" element={<SettingsPage />} />
-              </Routes>
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
-    </Routes>
+    <ERDSettingsProvider>
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route
+          path="/*"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <Routes>
+                  <Route path="/" element={<Navigate to="/connections" replace />} />
+                  <Route path="/connections" element={<ConnectionsPage />} />
+                  <Route path="/schema/:connectionId" element={<SchemaPage />} />
+                  <Route path="/intent/:connectionId" element={<IntentPage />} />
+                  <Route path="/generate/:intentId" element={<GeneratePage />} />
+                  <Route path="/settings" element={<SettingsPage />} />
+                </Routes>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+      </Routes>
+    </ERDSettingsProvider>
   );
 }
 

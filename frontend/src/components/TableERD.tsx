@@ -1,5 +1,19 @@
+/**
+ * TableERD - ERD component showing selected table and its relationships
+ *
+ * This component uses the reusable ERD library for visualization.
+ * It shows the selected table centered with related tables positioned around it:
+ * - Selected table in the center
+ * - Tables referenced by the selected table (outgoing FKs) on the right
+ * - Tables that reference the selected table (incoming FKs) on the left
+ *
+ * Features: pan/zoom, expand/collapse, orthogonal lines with crossing bridges
+ */
+
 import { useMemo } from 'react';
 import type { Table, ForeignKey } from '../types';
+import { ERDContainer } from '../lib/erd';
+import type { Position } from '../lib/erd/types';
 
 interface TableERDProps {
   selectedTable: Table;
@@ -7,168 +21,102 @@ interface TableERDProps {
   onTableClick?: (tableName: string) => void;
 }
 
-interface TableNode {
-  table: Table;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
-interface Relationship {
-  from: string;
-  to: string;
-  fk: ForeignKey;
-}
-
 export default function TableERD({ selectedTable, relatedTables, onTableClick }: TableERDProps) {
-  const { nodes, relationships, svgWidth, svgHeight } = useMemo(() => {
-    const nodeWidth = 200;
-    const nodeHeaderHeight = 32;
-    const nodeColumnHeight = 24;
-    const horizontalGap = 100;
-    const verticalGap = 40;
-    const centerX = 400;
-    const centerY = 50;
+  // Calculate custom positions for centered layout
+  const { tables, initialPositions } = useMemo(() => {
+    const nodeWidth = 160;
+    const horizontalGap = 80;
+    const verticalGap = 30;
+    const centerX = 300;
+    const centerY = 30;
 
-    // Calculate node dimensions
-    const calcNodeHeight = (table: Table) => 
-      nodeHeaderHeight + Math.min(table.columns.length, 8) * nodeColumnHeight + 16;
+    // Combine selectedTable with relatedTables (avoiding duplicates)
+    const allTables: Table[] = [selectedTable];
+    const seenNames = new Set([selectedTable.name]);
+    relatedTables.forEach((t) => {
+      if (!seenNames.has(t.name)) {
+        allTables.push(t);
+        seenNames.add(t.name);
+      }
+    });
 
-    // Create center node for selected table
-    const centerNode: TableNode = {
-      table: selectedTable,
+    const positions = new Map<string, Position>();
+
+    // Position the selected table in the center
+    positions.set(selectedTable.name, {
       x: centerX - nodeWidth / 2,
       y: centerY,
-      width: nodeWidth,
-      height: calcNodeHeight(selectedTable),
-    };
+    });
 
-    const nodes: TableNode[] = [centerNode];
-    const relationships: Relationship[] = [];
+    // Identify outgoing FK relationships (tables this table references)
+    const outgoingTableNames = new Set(
+      selectedTable.foreign_keys.map((fk: ForeignKey) => fk.referenced_table)
+    );
 
-    // Add outgoing FK relationships (tables this table references)
-    const outgoing = selectedTable.foreign_keys.map(fk => fk.referenced_table);
-    
-    // Add incoming FK relationships (tables that reference this table)
-    const incoming: { table: Table; fk: ForeignKey }[] = [];
-    relatedTables.forEach(t => {
-      t.foreign_keys.forEach(fk => {
-        if (fk.referenced_table === selectedTable.name && fk.referenced_schema === selectedTable.schema_name) {
-          incoming.push({ table: t, fk });
+    // Identify incoming FK relationships (tables that reference this table)
+    const incomingTableNames = new Set<string>();
+    relatedTables.forEach((t) => {
+      t.foreign_keys.forEach((fk: ForeignKey) => {
+        if (
+          fk.referenced_table === selectedTable.name &&
+          fk.referenced_schema === selectedTable.schema_name
+        ) {
+          incomingTableNames.add(t.name);
         }
       });
     });
 
     // Position outgoing tables (referenced by selected) on the right
-    const outgoingTables = relatedTables.filter(t => outgoing.includes(t.name));
-    outgoingTables.forEach((table, idx) => {
-      const height = calcNodeHeight(table);
-      const y = centerY + idx * (height + verticalGap);
-      nodes.push({
-        table,
-        x: centerX + nodeWidth / 2 + horizontalGap,
-        y,
-        width: nodeWidth,
-        height,
-      });
-      // Find the FK
-      const fk = selectedTable.foreign_keys.find(f => f.referenced_table === table.name);
-      if (fk) {
-        relationships.push({ from: selectedTable.name, to: table.name, fk });
+    let rightY = centerY;
+    allTables.forEach((table) => {
+      if (outgoingTableNames.has(table.name) && table.name !== selectedTable.name) {
+        positions.set(table.name, {
+          x: centerX + nodeWidth / 2 + horizontalGap,
+          y: rightY,
+        });
+        // Estimate height for next position (will be refined by ERDContainer)
+        rightY += 80 + verticalGap;
       }
     });
 
     // Position incoming tables (referencing selected) on the left
-    const incomingTableNames = new Set(incoming.map(i => i.table.name));
-    const incomingTables = relatedTables.filter(t => incomingTableNames.has(t.name));
-    incomingTables.forEach((table, idx) => {
-      const height = calcNodeHeight(table);
-      const y = centerY + idx * (height + verticalGap);
-      nodes.push({
-        table,
-        x: centerX - nodeWidth / 2 - horizontalGap - nodeWidth,
-        y,
-        width: nodeWidth,
-        height,
-      });
-      const rel = incoming.find(i => i.table.name === table.name);
-      if (rel) {
-        relationships.push({ from: table.name, to: selectedTable.name, fk: rel.fk });
+    let leftY = centerY;
+    allTables.forEach((table) => {
+      if (incomingTableNames.has(table.name) && table.name !== selectedTable.name && !positions.has(table.name)) {
+        positions.set(table.name, {
+          x: centerX - nodeWidth / 2 - horizontalGap - nodeWidth,
+          y: leftY,
+        });
+        leftY += 80 + verticalGap;
       }
     });
 
-    // Calculate SVG dimensions
-    const allX = nodes.map(n => [n.x, n.x + n.width]).flat();
-    const allY = nodes.map(n => [n.y, n.y + n.height]).flat();
-    const svgWidth = Math.max(...allX) - Math.min(...allX) + 100;
-    const svgHeight = Math.max(...allY) + 50;
+    // Normalize positions to start from 0
+    const allX = Array.from(positions.values()).map((p) => p.x);
+    const minX = allX.length > 0 ? Math.min(...allX) : 0;
+    if (minX < 30) {
+      const offsetX = 30 - minX;
+      positions.forEach((pos, key) => {
+        positions.set(key, { x: pos.x + offsetX, y: pos.y });
+      });
+    }
 
-    // Normalize positions
-    const minX = Math.min(...nodes.map(n => n.x));
-    nodes.forEach(n => { n.x -= minX - 50; });
-
-    return { nodes, relationships, svgWidth, svgHeight };
+    return { tables: allTables, initialPositions: positions };
   }, [selectedTable, relatedTables]);
 
-  const getNodeByName = (name: string) => nodes.find(n => n.table.name === name);
-
   return (
-    <div className="border rounded-lg bg-gray-50 overflow-auto" style={{ maxHeight: '400px' }}>
-      <svg width={svgWidth} height={svgHeight} className="min-w-full">
-        {/* Draw relationship lines */}
-        {relationships.map((rel, idx) => {
-          const fromNode = getNodeByName(rel.from);
-          const toNode = getNodeByName(rel.to);
-          if (!fromNode || !toNode) return null;
-          
-          const x1 = fromNode.x + fromNode.width;
-          const y1 = fromNode.y + 40;
-          const x2 = toNode.x;
-          const y2 = toNode.y + 40;
-          
-          return (
-            <g key={idx}>
-              <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#6366f1" strokeWidth="2" markerEnd="url(#arrow)" />
-              <text x={(x1 + x2) / 2} y={(y1 + y2) / 2 - 8} textAnchor="middle" className="text-xs fill-gray-600">
-                {rel.fk.columns.join(', ')}
-              </text>
-            </g>
-          );
-        })}
-        
-        {/* Arrow marker definition */}
-        <defs>
-          <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
-            <path d="M0,0 L0,6 L9,3 z" fill="#6366f1" />
-          </marker>
-        </defs>
-        
-        {/* Draw table nodes */}
-        {nodes.map((node, idx) => {
-          const isSelected = node.table.name === selectedTable.name;
-          return (
-            <g key={idx} onClick={() => onTableClick?.(node.table.name)} className="cursor-pointer">
-              <rect x={node.x} y={node.y} width={node.width} height={node.height} 
-                fill={isSelected ? '#e0e7ff' : 'white'} stroke={isSelected ? '#6366f1' : '#d1d5db'} 
-                strokeWidth={isSelected ? 2 : 1} rx="4" />
-              <rect x={node.x} y={node.y} width={node.width} height={32} 
-                fill={isSelected ? '#6366f1' : '#f3f4f6'} rx="4" />
-              <text x={node.x + node.width / 2} y={node.y + 20} textAnchor="middle" 
-                className={`text-sm font-semibold ${isSelected ? 'fill-white' : 'fill-gray-700'}`}>
-                {node.table.name}
-              </text>
-              {node.table.columns.slice(0, 8).map((col, cidx) => (
-                <text key={cidx} x={node.x + 8} y={node.y + 48 + cidx * 24} className="text-xs fill-gray-600">
-                  {col.is_primary_key ? '🔑 ' : col.is_foreign_key ? '🔗 ' : '   '}
-                  {col.name}
-                </text>
-              ))}
-            </g>
-          );
-        })}
-      </svg>
-    </div>
+    <ERDContainer
+      tables={tables}
+      initialPositions={initialPositions}
+      onTableClick={onTableClick}
+      config={{
+        enablePanZoom: true,
+        enableSelection: true,
+        enableExpand: true,
+        enableDragging: true,
+        enableSave: false,
+      }}
+      maxHeight="400px"
+    />
   );
 }
-

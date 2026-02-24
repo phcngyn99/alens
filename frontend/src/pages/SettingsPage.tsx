@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Key, Plus, Loader2, CheckCircle, Cloud, Lock, Users, UserPlus, Trash2 } from 'lucide-react';
+import { Key, Plus, Loader2, CheckCircle, Cloud, Lock, Users, UserPlus, Trash2, Eye } from 'lucide-react';
 import { ai, users } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
+import { useERDSettings } from '../lib/erd';
 import type { AICredentialCreate, AIProviderType, UserCreate } from '../types';
 
 const PROVIDERS = [
@@ -240,6 +241,9 @@ export default function SettingsPage() {
         )}
       </div>
       
+      {/* ERD Visualization Settings */}
+      <ERDVisualizationSettings />
+
       {/* Account Settings */}
       <div className="card">
         <div className="flex justify-between items-center mb-4">
@@ -375,6 +379,122 @@ export default function SettingsPage() {
           and uses AI to propose dimensional models for data warehousing. All database access is read-only.
         </p>
         <p className="text-xs text-blue-600 mt-2">Version 0.1.0</p>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * ERD Visualization Settings Component
+ */
+function ERDVisualizationSettings() {
+  const { settings, updateSettings, resetSettings } = useERDSettings();
+
+  const handlePrimaryColorChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    updateSettings({ primaryColor: e.target.value });
+  };
+
+  const handleGrayscaleToggle = () => {
+    updateSettings({ grayscaleEnabled: !settings.grayscaleEnabled });
+  };
+
+  const handleGrayscaleOpacityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    updateSettings({ grayscaleOpacity: parseFloat(e.target.value) / 100 });
+  };
+
+  return (
+    <div className="card">
+      <div className="flex justify-between items-center mb-4">
+        <div className="flex items-center">
+          <Eye className="h-5 w-5 mr-2 text-gray-700" />
+          <h2 className="text-lg font-semibold">ERD Visualization</h2>
+        </div>
+        <button onClick={resetSettings} className="btn-secondary text-sm">
+          Reset to Defaults
+        </button>
+      </div>
+
+      <div className="space-y-6">
+        {/* Colors Section */}
+        <div>
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">Colors</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+              <div>
+                <label className="font-medium text-gray-900">Primary Color</label>
+                <p className="text-sm text-gray-500">Color for relationship lines and highlights</p>
+              </div>
+              <div className="flex items-center space-x-3">
+                <input
+                  type="color"
+                  value={settings.primaryColor}
+                  onChange={handlePrimaryColorChange}
+                  className="h-10 w-20 rounded border border-gray-300 cursor-pointer"
+                />
+                <span className="text-sm text-gray-600 font-mono">{settings.primaryColor}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Visual Effects Section */}
+        <div>
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">Visual Effects</h3>
+          <div className="space-y-4">
+            {/* Grayscale Toggle */}
+            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+              <div>
+                <label className="font-medium text-gray-900">Grayscale Effect</label>
+                <p className="text-sm text-gray-500">
+                  Apply grayscale filter to unrelated tables when a table is selected
+                </p>
+              </div>
+              <button
+                onClick={handleGrayscaleToggle}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  settings.grayscaleEnabled ? 'bg-primary-600' : 'bg-gray-300'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    settings.grayscaleEnabled ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+
+            {/* Grayscale Opacity Slider */}
+            {settings.grayscaleEnabled && (
+              <div className="p-4 bg-gray-50 rounded-lg">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="font-medium text-gray-900">Grayscale Opacity</label>
+                  <span className="text-sm text-gray-600 font-mono">
+                    {Math.round(settings.grayscaleOpacity * 100)}%
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={Math.round(settings.grayscaleOpacity * 100)}
+                  onChange={handleGrayscaleOpacityChange}
+                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary-600"
+                />
+                <p className="text-xs text-gray-500 mt-2">
+                  Controls the opacity of grayscale elements (0% = fully transparent, 100% = fully opaque)
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Info */}
+        <div className="p-3 bg-blue-50 border border-blue-100 rounded-lg">
+          <p className="text-sm text-blue-800">
+            These settings apply to all ERD visualizations in schema browser and table views.
+            Changes take effect immediately.
+          </p>
+        </div>
       </div>
     </div>
   );

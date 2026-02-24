@@ -1,34 +1,56 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Table2, Key, Link as LinkIcon, Loader2, ChevronDown, ChevronRight } from 'lucide-react';
+import { Table2, Key, Link as LinkIcon, Loader2, ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
 import { connections, introspection } from '../services/api';
 import type { Table, Column } from '../types';
+import FullSchemaERD from '../components/FullSchemaERD';
 
 export default function SchemaPage() {
   const { connectionId } = useParams<{ connectionId: string }>();
   const [selectedSchema, setSelectedSchema] = useState<string | null>(null);
   const [expandedTables, setExpandedTables] = useState<Set<string>>(new Set());
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  // Track if we've already auto-selected a schema to prevent re-selection on refresh
+  const hasAutoSelected = useRef(false);
   
   const { data: connection } = useQuery({
     queryKey: ['connection', connectionId],
     queryFn: () => connections.get(connectionId!),
     enabled: !!connectionId,
   });
-  
-  const { data: schemas = [], isLoading: loadingSchemas, error: schemasError, isError: isSchemasError } = useQuery({
+
+  const { data: schemas = [], isLoading: loadingSchemas, error: schemasError, isError: isSchemasError, refetch: refetchSchemas } = useQuery({
     queryKey: ['schemas', connectionId],
     queryFn: () => introspection.getSchemas(connectionId!),
     enabled: !!connectionId,
     retry: 1, // Only retry once for connection errors
     retryDelay: 500, // Short delay between retries
+    refetchInterval: 5 * 60 * 1000, // Auto-refresh every 5 minutes
   });
 
-  const { data: schemaData, isLoading: loadingSchema, error: schemaError } = useQuery({
+  const { data: schemaData, isLoading: loadingSchema, error: schemaError, refetch: refetchSchema } = useQuery({
     queryKey: ['schema', connectionId, selectedSchema],
     queryFn: () => introspection.getSchema(connectionId!, selectedSchema!, true),
     enabled: !!connectionId && !!selectedSchema,
+    refetchInterval: 5 * 60 * 1000, // Auto-refresh every 5 minutes
   });
+
+  /**
+   * Task 1: Auto-select First Schema
+   * When schemas are loaded and no schema has been selected yet, automatically
+   * select the first schema from the list. This triggers the schema data query
+   * to load automatically without requiring user interaction.
+   *
+   * We use a ref (hasAutoSelected) to track if we've already auto-selected,
+   * preventing re-selection when schemas are refreshed.
+   */
+  useEffect(() => {
+    if (schemas.length > 0 && !hasAutoSelected.current && selectedSchema === null) {
+      hasAutoSelected.current = true;
+      setSelectedSchema(schemas[0]);
+    }
+  }, [schemas, selectedSchema]);
   
   const toggleTable = (tableName: string) => {
     setExpandedTables((prev) => {
@@ -37,6 +59,29 @@ export default function SchemaPage() {
       else next.add(tableName);
       return next;
     });
+  };
+
+  /**
+   * Task 2: Manual Refresh Handler
+   * Refreshes both the schemas list and the currently selected schema's data.
+   * Shows a loading/spinning state while the refresh is in progress.
+   * The button is disabled during the refresh operation to prevent multiple clicks.
+   *
+   * Note: We use throwOnError: false to prevent exceptions from being thrown.
+   * React Query will still update the error state which is displayed in the UI.
+   */
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      // Refresh the schemas list first - don't throw on error, let React Query handle it
+      await refetchSchemas({ throwOnError: false });
+      // If a schema is selected, also refresh its detailed data
+      if (selectedSchema) {
+        await refetchSchema({ throwOnError: false });
+      }
+    } finally {
+      setIsRefreshing(false);
+    }
   };
   
   const getHintBadge = (table: Table) => {
@@ -94,8 +139,8 @@ export default function SchemaPage() {
         <h1 className="text-2xl font-bold text-gray-900">Schema Browser</h1>
         <p className="text-gray-500">{connection?.name} - {connection?.db_type}</p>
       </div>
-      
-      <div className="flex space-x-4">
+
+      <div className="flex justify-between items-end">
         <div className="w-48">
           <label className="input-label">Schema</label>
           <select
@@ -107,14 +152,56 @@ export default function SchemaPage() {
             {schemas.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
+        {/* Task 2: Manual Refresh Button - positioned on the right side of the page */}
+        <button
+          onClick={handleRefresh}
+          disabled={isRefreshing}
+          className="btn-secondary flex items-center"
+          title="Refresh schema data"
+        >
+          {/* RefreshCw icon spins when refreshing to indicate loading state */}
+          <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+          Refresh
+        </button>
       </div>
-      
+
       {loadingSchema && <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-primary-500" /></div>}
 
       {schemaError && (
         <div className="card bg-yellow-50 border border-yellow-200">
           <h3 className="text-yellow-800 font-semibold">Error Loading Schema</h3>
           <p className="text-yellow-600 mt-2">{getErrorMessage(schemaError)}</p>
+        </div>
+      )}
+
+      {/**
+       * Task 3: ERD Visualization
+       * Displays a full Entity Relationship Diagram showing ALL tables in the schema
+       * with ALL their foreign key relationships.
+       * - tables: All tables from the selected schema
+       * - onTableClick: When a user clicks a table in the ERD, it expands that table
+       *   in the table list below for easy navigation
+       */}
+      {schemaData && schemaData.tables.length > 0 && (
+        <div className="card">
+          <h2 className="text-lg font-semibold mb-4">
+            Entity Relationship Diagram
+            <span className="text-sm font-normal text-gray-500 ml-2">
+              ({schemaData.tables.length} tables)
+            </span>
+          </h2>
+          <FullSchemaERD
+            tables={schemaData.tables}
+            onTableClick={(tableName) => {
+              // When a table is clicked in the ERD, expand it in the table list below
+              // This provides a seamless navigation experience between the ERD and table details
+              setExpandedTables((prev) => {
+                const next = new Set(prev);
+                next.add(tableName);
+                return next;
+              });
+            }}
+          />
         </div>
       )}
 

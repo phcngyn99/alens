@@ -125,7 +125,26 @@ alens/
 │   │   ├── components/
 │   │   │   ├── Layout.tsx            # Main layout
 │   │   │   ├── TableDetailsPanel.tsx # Table details
-│   │   │   └── TableERD.tsx          # ERD visualization
+│   │   │   ├── TableERD.tsx          # ERD visualization (legacy)
+│   │   │   └── FullSchemaERD.tsx     # Full schema ERD with new library
+│   │   ├── lib/
+│   │   │   └── erd/              # Reusable ERD library
+│   │   │       ├── components/
+│   │   │       │   ├── ERDCanvas.tsx      # SVG canvas
+│   │   │       │   ├── ERDContainer.tsx   # Main container
+│   │   │       │   ├── ERDNode.tsx        # Table node
+│   │   │       │   └── ERDRelationship.tsx # Relationship lines
+│   │   │       ├── context/
+│   │   │       │   └── ERDContext.tsx     # React Context for state
+│   │   │       ├── hooks/
+│   │   │       │   ├── useDragging.ts     # Drag & drop
+│   │   │       │   ├── useExpand.ts       # Expand/collapse
+│   │   │       │   ├── usePanZoom.ts      # Pan & zoom
+│   │   │       │   └── useSelection.ts    # Table selection
+│   │   │       ├── config.ts         # Default configuration
+│   │   │       ├── types.ts          # TypeScript types
+│   │   │       ├── utils.ts          # Layout & path generation
+│   │   │       └── index.ts          # Public API
 │   │   ├── hooks/
 │   │   │   └── useAuth.ts            # Auth hook
 │   │   ├── pages/
@@ -134,7 +153,7 @@ alens/
 │   │   │   ├── SchemaPage.tsx        # Schema browser
 │   │   │   ├── IntentPage.tsx        # Intent definition
 │   │   │   ├── GeneratePage.tsx      # AI generation
-│   │   │   └── SettingsPage.tsx      # Settings
+│   │   │   └── SettingsPage.tsx      # Settings (includes ERD settings)
 │   │   ├── services/
 │   │   │   └── api.ts                # API client
 │   │   ├── types/
@@ -901,7 +920,32 @@ Before submitting changes:
 
 ---
 
-**Last Updated:** 2026-02-11
+## 📊 Recent Updates
+
+### 2026-02-24: ERD Library Refactoring
+- **Cleaned up ERD library** following KISS and DRY principles
+- **Removed debug console.log statements** from production code
+- **Removed deprecated config properties** (opacity settings, duplicate bridgeSize)
+- **Removed unused layout property** (padding)
+- **Added viewport dimension constants** (DEFAULT_VIEWPORT_WIDTH, DEFAULT_VIEWPORT_HEIGHT)
+- **Standardized jump effect** using quadratic Bezier curves for consistency
+- **Centralized viewport dimensions** for better maintainability
+- **All tests passing** (25 passed, 6 skipped)
+- **No TypeScript errors**
+
+### ERD Features
+- **DBeaver-style design** - Clean, minimal visualization with blue headers
+- **Jump/bridge effects** - Semicircular arcs where lines cross (circuit diagram style)
+- **Grayscale focus** - Unrelated tables fade when a table is selected
+- **Global settings** - ERD settings managed at app level (colors, grayscale, opacity)
+- **Smart centering** - Most connected table centered, entire view centered
+- **Zoom controls** - Disabled mouse/touchpad zoom, only zoom through buttons
+- **Collision detection** - Moveable database cards with grid lines
+- **Column-specific relationships** - Lines connect to specific columns, not just tables
+
+---
+
+**Last Updated:** 2026-02-24
 **Maintainer:** Development Team
 **License:** [Specify License]
 

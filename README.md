@@ -5,23 +5,9 @@
 
 A web application that helps design dimensional data models using AI. Connect to relational databases, introspect schemas, define analytical intent, and get AI-proposed star/snowflake schemas.
 
----
-
-## 🎯 What is Alens?
-
-Alens bridges the gap between relational databases and dimensional modeling. It:
-
-1. **Connects** to your databases (PostgreSQL, SQL Server, DB2)
-2. **Introspects** schema metadata (tables, columns, relationships)
-3. **Converts** to DBML format with auto-detected patterns
-4. **Captures** your analytical intent (business domain, metrics, time grain)
-5. **Generates** AI-proposed dimensional models with explanations
-
 **Key Feature:** Read-only access. Safe for production databases.
 
----
-
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 - Docker and Docker Compose
@@ -52,50 +38,23 @@ open http://localhost:3000
 
 ### Your First Dimensional Model
 
-1. **Login** at http://localhost:3000
-2. **Add Connection** - Connect to your database (or use the example AdventureWorks)
-3. **Browse Schema** - Explore tables and relationships
-4. **Define Intent** - Describe your analytical goals
-5. **Configure AI** - Add your OpenAI or Anthropic API key in Settings
-6. **Generate Model** - Get AI-proposed dimensional model
+1. Login at http://localhost:3000 (default: `wnkadmin` / `wnkadmin`)
+2. Add database connection
+3. Browse schema and explore tables
+4. Define analytical intent
+5. Configure AI provider in Settings
+6. Generate dimensional model
 
----
+## Features
 
-## 📋 Features
+- **Database Support:** PostgreSQL, SQL Server, DB2 (read-only)
+- **Schema Introspection:** Tables, columns, keys, indexes with Redis caching
+- **AI Integration:** OpenAI, Anthropic, Azure (structured prompts, versioned outputs)
+- **Dimensional Modeling:** DBML generation, fact/dimension identification, SCD hints
+- **ERD Visualization:** DBeaver-style design with interactive features
+- **Security:** Encrypted credentials, JWT auth, RBAC
 
-### Database Support
-- ✅ PostgreSQL
-- ✅ SQL Server
-- ✅ IBM DB2
-- 🔒 Read-only access (no mutations)
-- 🔐 Encrypted credential storage
-
-### Schema Introspection
-- Tables, columns, data types
-- Primary keys, foreign keys, indexes
-- Approximate row counts
-- Auto-detection of fact/dimension patterns
-- Redis caching for performance
-
-### AI Integration
-- OpenAI (GPT-4, GPT-4 Turbo)
-- Anthropic (Claude 3 Opus, Sonnet)
-- Azure OpenAI
-- Azure Anthropic
-- Structured prompts (deterministic, reproducible)
-- Versioned outputs
-
-### Dimensional Modeling
-- DBML generation (raw + annotated)
-- Fact table identification
-- Dimension table design
-- Grain definition
-- SCD (Slowly Changing Dimension) hints
-- Assumptions and uncertainties
-
----
-
-## 🏗️ Architecture
+## Architecture
 
 ```
 ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
@@ -112,25 +71,17 @@ open http://localhost:3000
                     └─────────────┘
 ```
 
-**Tech Stack:**
-- **Backend:** Python 3.11, FastAPI, SQLAlchemy (async)
-- **Frontend:** React 18, TypeScript, Vite, Tailwind CSS
-- **Database:** PostgreSQL 15 (application storage)
-- **Cache:** Redis 7
-- **Deployment:** Docker Compose
+**Tech Stack:** Python 3.11, FastAPI, React 18, TypeScript, PostgreSQL 15, Redis 7, Docker Compose
 
----
+## Documentation
 
-## 📚 Documentation
+- [CHANGELOG.md](CHANGELOG.md) - Version history and release notes
+- [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) - Detailed project structure and architecture
+- [DESIGN_PRINCIPLES.md](DESIGN_PRINCIPLES.md) - Core design philosophy and patterns
+- [AI_AGENT_CONTEXT.md](AI_AGENT_CONTEXT.md) - Guide for AI coding agents
+- [tests/README.md](tests/README.md) - E2E testing framework
 
-- **[AI_AGENT_CONTEXT.md](AI_AGENT_CONTEXT.md)** - Comprehensive guide for AI coding agents
-- **[DESIGN_PRINCIPLES.md](DESIGN_PRINCIPLES.md)** - Core design philosophy and patterns
-- **[PROJECT_CONTEXT.md](PROJECT_CONTEXT.md)** - Detailed project structure and architecture
-- **[tests/README.md](tests/README.md)** - E2E testing framework guide
-
----
-
-## 🧪 Testing
+## Testing
 
 ```bash
 # Run E2E tests
@@ -146,142 +97,43 @@ make test-file FILE=test_login.py
 make test-verbose
 ```
 
-**Test Coverage:**
-- Authentication and authorization
-- Database connection management
-- Schema introspection
-- Intent definition
-- AI model generation
-- Error handling
+## Development
 
----
-
-## 🛠️ Development
-
-### Backend Development
 ```bash
-cd backend
-pip install -r requirements.txt
+# Backend
+cd backend && pip install -r requirements.txt
 uvicorn app.main:app --reload
-```
 
-### Frontend Development
-```bash
-cd frontend
-npm install
-npm run dev
-```
+# Frontend
+cd frontend && npm install && npm run dev
 
-### Useful Commands
-```bash
+# Useful commands
 make logs              # View all logs
-make logs-backend      # Backend logs only
 make shell-backend     # Open backend shell
 make shell-db          # Open PostgreSQL shell
-make rebuild           # Rebuild all containers
-make clean             # Remove all containers/volumes
+make rebuild           # Rebuild containers
+make clean             # Remove containers/volumes
 ```
 
----
+## Security
 
-## 🔐 Security
+- Read-only database access (no mutations)
+- Encrypted credentials (Fernet)
+- JWT authentication with RBAC
+- CORS protection
+- SQL injection prevention
 
-- **Read-only database access** - No mutations on target databases
-- **Encrypted credentials** - Fernet symmetric encryption
-- **JWT authentication** - Secure token-based auth
-- **RBAC** - Role-based access control (admin/user)
-- **CORS protection** - Configurable allowed origins
-- **SQL injection prevention** - Parameterized queries only
-
----
-
-## 🎨 Design Philosophy
-
-### Core Principles
-1. **KISS** - Keep logic explicit and readable
-2. **DRY** - Shared abstractions for database connectors
-3. **Deterministic** - Same inputs → same outputs
-4. **Read-only** - No database mutations, ever
-5. **Explicit consent** - No background jobs without user action
-
-### UI/UX
-- Apple-style simplicity
-- Light theme (clean, professional)
-- Structured forms over free-form chat
-- Sensible defaults
-- Progressive disclosure
-
-See [DESIGN_PRINCIPLES.md](DESIGN_PRINCIPLES.md) for details.
-
----
-
-## 🔄 Workflow
-
-1. **Connect** - Add database connection with credentials
-2. **Explore** - Browse schemas, tables, relationships
-3. **Select** - Choose tables of interest
-4. **Define** - Capture analytical intent (structured form)
-5. **Generate** - AI proposes dimensional model
-6. **Review** - Examine fact tables, dimensions, grain
-7. **Download** - Export DBML, explanations, diagrams
-
----
-
-## 📦 Project Structure
-
-```
-alens/
-├── backend/           # FastAPI backend
-│   ├── app/
-│   │   ├── api/      # API routes
-│   │   ├── auth/     # Authentication
-│   │   ├── core/     # Business logic
-│   │   ├── storage/  # Database models
-│   │   └── main.py   # Entry point
-│   └── requirements.txt
-├── frontend/          # React frontend
-│   ├── src/
-│   │   ├── components/
-│   │   ├── pages/
-│   │   ├── services/
-│   │   └── types/
-│   └── package.json
-├── tests/             # E2E tests (Selenium)
-├── docker-compose.yml
-└── Makefile
-```
-
----
-
-## 🤝 Contributing
+## Contributing
 
 1. Read [DESIGN_PRINCIPLES.md](DESIGN_PRINCIPLES.md)
-2. Review [AI_AGENT_CONTEXT.md](AI_AGENT_CONTEXT.md)
-3. Follow existing code patterns
-4. Add tests for new features
-5. Update documentation
+2. Follow existing code patterns
+3. Add tests for new features
+4. Update [CHANGELOG.md](CHANGELOG.md)
 
----
-
-## 📄 License
+## License
 
 [Specify License]
 
 ---
 
-## 🙏 Acknowledgments
-
-- **DBML** - Database Markup Language specification
-- **Kimball** - Dimensional modeling methodology
-- **FastAPI** - Modern Python web framework
-- **React** - UI library
-
----
-
-## 📞 Support
-
-For issues, questions, or contributions, please refer to the documentation files or open an issue.
-
----
-
-**Built with ❤️ for data engineers and analysts**
+Built for data engineers and analysts

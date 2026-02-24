@@ -1,48 +1,30 @@
-# Alens (Analytics Lens) - Project Context
+# Alens - Project Context
 
-**Version:** 0.1.0  
-**Purpose:** Production-ready web application for AI-assisted dimensional data modeling
+**Version:** 0.1.0
+**Last Updated:** 2026-02-24
 
----
+Production-ready web application for AI-assisted dimensional data modeling.
 
-## 🎯 Project Overview
+## Project Overview
 
-Alens is a full-stack application that helps data engineers and analysts design dimensional data models (star/snowflake schemas) using AI. It connects to relational databases, introspects schema metadata, captures user analytical intent, and generates AI-proposed dimensional models.
+Alens helps data engineers and analysts design dimensional data models (star/snowflake schemas) using AI. It connects to relational databases, introspects schema metadata, captures user analytical intent, and generates AI-proposed dimensional models.
 
-### Core Value Proposition
-- **Read-only database access** - No mutations, safe for production databases
-- **Structured AI prompts** - No chat history, deterministic prompt generation
-- **Multi-database support** - PostgreSQL, SQL Server, DB2
-- **Caching layer** - Redis-based caching for schema introspection
-- **Multi-user support** - Authentication, RBAC, encrypted credentials
+**Core Value:**
+- Read-only database access (safe for production)
+- Structured AI prompts (deterministic, reproducible)
+- Multi-database support (PostgreSQL, SQL Server, DB2)
+- Redis caching for performance
+- Multi-user with RBAC and encrypted credentials
 
----
-
-## 🏗️ Architecture
+## Architecture
 
 ### Technology Stack
 
-**Backend:**
-- **Framework:** FastAPI (Python 3.11+)
-- **Database:** PostgreSQL 15 (application storage)
-- **ORM:** SQLAlchemy 2.0 (async)
-- **Cache:** Redis 7
-- **AI Providers:** OpenAI, Anthropic, Azure OpenAI, Azure Anthropic
-- **Database Drivers:** asyncpg (PostgreSQL), pyodbc (SQL Server), ibm-db (DB2)
-
-**Frontend:**
-- **Framework:** React 18 + TypeScript
-- **Build Tool:** Vite
-- **Routing:** React Router v6
-- **State Management:** Zustand
-- **HTTP Client:** Axios
-- **Styling:** Tailwind CSS
-- **Icons:** Lucide React
-
-**Infrastructure:**
-- **Containerization:** Docker + Docker Compose
-- **Web Server:** Nginx (frontend)
-- **ASGI Server:** Uvicorn (backend)
+**Backend:** Python 3.11, FastAPI, SQLAlchemy 2.0 (async), PostgreSQL 15, Redis 7
+**Frontend:** React 18, TypeScript, Vite, Tailwind CSS, Zustand
+**AI Providers:** OpenAI, Anthropic, Azure OpenAI, Azure Anthropic
+**Database Drivers:** asyncpg (PostgreSQL), pyodbc (SQL Server), ibm-db (DB2)
+**Infrastructure:** Docker Compose, Nginx, Uvicorn
 
 ### Deployment Architecture
 
@@ -190,70 +172,16 @@ alens/
 
 ---
 
-## 🔄 Application Workflow
+## Application Workflow
 
-### 1. User Authentication
-- JWT-based authentication with bcrypt password hashing
-- Default admin user: `wnkadmin` / `wnkadmin`
-- Role-based access control (RBAC): `admin` and `user` roles
-- Token stored in localStorage, auto-refresh on 401
+1. **Authentication:** JWT with bcrypt, RBAC (admin/user), default: `wnkadmin/wnkadmin`
+2. **Connection Management:** Encrypted credentials (Fernet), schema whitelist, connection testing
+3. **Schema Introspection:** Read-only access, Redis caching (5min TTL), auto-detection of patterns
+4. **Intent Definition:** Structured capture (domain, goal, time grain, metrics, tables, exclusions), versioned
+5. **DBML Generation:** Raw + annotated DBML with auto-annotations (event-like, lookup, fact patterns)
+6. **AI Generation:** Structured prompts (no chat history), multi-provider support, versioned outputs
 
-### 2. Database Connection Management
-- Users create database connections with encrypted credentials
-- Supported databases: PostgreSQL, SQL Server, DB2
-- Credentials encrypted using Fernet (symmetric encryption)
-- Schema whitelist support for limiting introspection scope
-- Connection testing before saving
-
-### 3. Schema Introspection
-- **Read-only** database access via system catalogs
-- Introspects: schemas, tables, columns, primary keys, foreign keys, indexes
-- Auto-detection of timestamp columns and FK patterns
-- Redis caching (5-minute TTL for schemas, 1-minute for data previews)
-- Supports approximate row counts and table statistics
-
-### 4. Intent Definition
-- Structured capture of analytical requirements:
-  - **Business Domain**: e.g., "Sales Analytics", "HR Reporting"
-  - **Analytical Goal**: `reporting`, `bi`, or `ad-hoc`
-  - **Time Grain**: `daily`, `weekly`, or `monthly`
-  - **Key Metrics**: List of metrics to track
-  - **Tables of Interest**: User-selected tables with fact/dimension hints
-  - **Exclusions**: Tables/schemas to exclude from modeling
-- Versioned intents (each new intent increments version)
-
-### 5. DBML Generation
-- Converts introspected schema to DBML (Database Markup Language)
-- Two outputs:
-  - **Raw DBML**: Exact schema representation
-  - **Annotated DBML**: Includes user hints and auto-detected patterns
-- Auto-annotations:
-  - Tables with timestamp columns → "may be event-like"
-  - Tables with no FKs → "may be reference/lookup table"
-  - Tables with 3+ FKs → "may be fact table"
-
-### 6. AI Model Generation
-- Structured prompt generation (no chat history)
-- Prompt includes:
-  - User intent (business domain, goals, metrics)
-  - Tables of interest with hints
-  - Raw and annotated DBML
-  - Optional statistics
-- AI providers supported:
-  - **OpenAI**: GPT-4 Turbo, GPT-4
-  - **Anthropic**: Claude 3 Opus, Claude 3 Sonnet
-  - **Azure OpenAI**: Custom deployments
-  - **Azure Anthropic**: Azure AI Services
-- AI response parsing:
-  - Model explanation (fact tables, grain, measures)
-  - Dimension details (attributes, SCD strategies)
-  - Assumptions and uncertainties
-  - Dimensional DBML output
-- Versioned outputs (multiple generations per intent)
-
----
-
-## 🗄️ Database Schema (Application Storage)
+## Database Schema (Application Storage)
 
 ### Users Table
 ```sql
@@ -920,33 +848,29 @@ Before submitting changes:
 
 ---
 
-## 📊 Recent Updates
+## Recent Updates
+
+See [CHANGELOG.md](CHANGELOG.md) for detailed version history.
 
 ### 2026-02-24: ERD Library Refactoring
-- **Cleaned up ERD library** following KISS and DRY principles
-- **Removed debug console.log statements** from production code
-- **Removed deprecated config properties** (opacity settings, duplicate bridgeSize)
-- **Removed unused layout property** (padding)
-- **Added viewport dimension constants** (DEFAULT_VIEWPORT_WIDTH, DEFAULT_VIEWPORT_HEIGHT)
-- **Standardized jump effect** using quadratic Bezier curves for consistency
-- **Centralized viewport dimensions** for better maintainability
-- **All tests passing** (25 passed, 6 skipped)
-- **No TypeScript errors**
+- Cleaned up ERD library following KISS and DRY principles
+- Removed debug console.log statements from production code
+- Removed deprecated config properties and unused layout properties
+- Added viewport dimension constants for maintainability
+- Standardized jump effect using quadratic Bezier curves
+- All tests passing (25 passed, 6 skipped)
 
 ### ERD Features
-- **DBeaver-style design** - Clean, minimal visualization with blue headers
-- **Jump/bridge effects** - Semicircular arcs where lines cross (circuit diagram style)
-- **Grayscale focus** - Unrelated tables fade when a table is selected
-- **Global settings** - ERD settings managed at app level (colors, grayscale, opacity)
-- **Smart centering** - Most connected table centered, entire view centered
-- **Zoom controls** - Disabled mouse/touchpad zoom, only zoom through buttons
-- **Collision detection** - Moveable database cards with grid lines
-- **Column-specific relationships** - Lines connect to specific columns, not just tables
+- DBeaver-style design with clean, minimal visualization
+- Jump/bridge effects for line crossings (circuit diagram style)
+- Grayscale focus mode for unrelated tables
+- Global settings management (colors, grayscale, opacity)
+- Smart centering (most connected table, entire view)
+- Zoom controls (button-only, disabled mouse/touchpad)
+- Collision detection for moveable cards with grid lines
+- Column-specific relationship lines
 
 ---
 
 **Last Updated:** 2026-02-24
-**Maintainer:** Development Team
 **License:** [Specify License]
-
-

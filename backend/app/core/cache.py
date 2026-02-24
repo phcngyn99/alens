@@ -9,6 +9,7 @@ from typing import Any, Optional
 from uuid import UUID
 
 import redis.asyncio as redis
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
@@ -70,10 +71,25 @@ class RedisCache:
         try:
             client = await get_redis()
             ttl = ttl_seconds if ttl_seconds is not None else self._default_ttl
-            serialized = json.dumps(value, default=str)
+
+            # Properly serialize Pydantic models to dictionaries
+            serializable_value = self._to_serializable(value)
+            serialized = json.dumps(serializable_value, default=str)
             await client.setex(key, ttl, serialized)
         except Exception as e:
             logger.warning(f"Redis set error for key {key}: {e}")
+
+    def _to_serializable(self, value: Any) -> Any:
+        """Convert value to a JSON-serializable format, handling Pydantic models."""
+        if isinstance(value, BaseModel):
+            # Pydantic v2: use model_dump() to convert to dict
+            return value.model_dump()
+        elif isinstance(value, list):
+            return [self._to_serializable(item) for item in value]
+        elif isinstance(value, dict):
+            return {k: self._to_serializable(v) for k, v in value.items()}
+        else:
+            return value
 
     async def delete(self, key: str) -> bool:
         """Delete a specific key from cache."""
